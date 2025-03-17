@@ -6,7 +6,6 @@ import json
 import os
 from dotenv import load_dotenv  
 
-# Load API Key
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
@@ -17,17 +16,14 @@ if not api_key:
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
-# Transcript storage directory
 TRANSCRIPT_DIR = "cached_transcripts"
 os.makedirs(TRANSCRIPT_DIR, exist_ok=True)
 
-# Function to extract video ID from URL
 def extract_video_id(url):
     pattern = r"(?:v=|\/)([0-9A-Za-z_-]{11})"
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
-# Convert timestamp from seconds to MM:SS
 def format_time(seconds):
     try:
         seconds = float(seconds)
@@ -42,16 +38,12 @@ def save_transcript(video_id, transcript):
     file_path = os.path.join(TRANSCRIPT_DIR, f"{video_id}.json")
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(transcript, f, ensure_ascii=False, indent=2)
-
-# Load transcript from a file
 def load_transcript(video_id):
     file_path = os.path.join(TRANSCRIPT_DIR, f"{video_id}.json")
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
-
-# Get transcript with caching
 def get_transcript(video_id):
     cached_transcript = load_transcript(video_id)
     if cached_transcript:
@@ -64,8 +56,6 @@ def get_transcript(video_id):
         return transcript, None
     except Exception as e:
         return None, f"Error: {str(e)}"
-
-# Analyze ad quality using Gemini
 def analyze_ad_quality(transcript):
     if not transcript:
         st.error("⚠️ No transcript available for analysis.")
@@ -127,8 +117,6 @@ def analyze_ad_quality(transcript):
         st.error(f"LLM Error: {e}")
         return None
 
-
-# Streamlit UI
 st.markdown("<h1 style='text-align: left;'>📊 YouTube Ad Quality Analyzer</h1>", unsafe_allow_html=True)
 st.write("Analyze YouTube ad segments for quality and effectiveness.")
 
