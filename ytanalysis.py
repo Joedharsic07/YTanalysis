@@ -4,15 +4,21 @@ import google.generativeai as genai
 import re
 import json
 import os
+import requests
 from dotenv import load_dotenv  
 
 load_dotenv()
 api_key = os.getenv("GEMINI_API_KEY")
+youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+
 if not api_key:
-    st.error("❌ API key missing! Set GEMINI_API_KEY in environment variables.")
+    st.error("❌ GEMINI API key missing! Set GEMINI_API_KEY in environment variables.")
     st.stop()
 
-# Initialize Gemini Model
+if not youtube_api_key:
+    st.error("❌ YouTube API key missing! Set YOUTUBE_API_KEY in environment variables.")
+    st.stop()
+
 genai.configure(api_key=api_key)
 model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -33,17 +39,29 @@ def format_time(seconds):
     except ValueError:
         return "N/A"
 
-# Save transcript to a file
+def get_video_details(video_id):
+    url = f"https://www.googleapis.com/youtube/v3/videos?part=snippet&id={video_id}&key={youtube_api_key}"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        data = response.json()
+        if "items" in data and len(data["items"]) > 0:
+            snippet = data["items"][0]["snippet"]
+            return snippet["title"], snippet["channelTitle"]
+    return "Unknown Title", "Unknown Channel"
+
 def save_transcript(video_id, transcript):
     file_path = os.path.join(TRANSCRIPT_DIR, f"{video_id}.json")
     with open(file_path, "w", encoding="utf-8") as f:
         json.dump(transcript, f, ensure_ascii=False, indent=2)
+
 def load_transcript(video_id):
     file_path = os.path.join(TRANSCRIPT_DIR, f"{video_id}.json")
     if os.path.exists(file_path):
         with open(file_path, "r", encoding="utf-8") as f:
             return json.load(f)
     return None
+
 def get_transcript(video_id):
     cached_transcript = load_transcript(video_id)
     if cached_transcript:
@@ -52,10 +70,11 @@ def get_transcript(video_id):
     try:
         transcript_data = YouTubeTranscriptApi.get_transcript(video_id)
         transcript = [{"start": entry["start"], "text": entry["text"]} for entry in transcript_data]
-        save_transcript(video_id, transcript)  # Save for future use
+        save_transcript(video_id, transcript) 
         return transcript, None
     except Exception as e:
         return None, f"Error: {str(e)}"
+
 def analyze_ad_quality(transcript):
     if not transcript:
         st.error("⚠️ No transcript available for analysis.")
@@ -100,7 +119,7 @@ def analyze_ad_quality(transcript):
     """
 
     try:
-        response = model.generate_content(prompt)
+        response = model.generate_content(prompt, generation_config={"temperature": 0})
         clean_text = response.text.strip().strip("```json").strip("```").strip()
         ad_data = json.loads(clean_text)
 
@@ -130,9 +149,13 @@ if st.button("Analyze"):
             video_id = extract_video_id(video_url)
             if not video_id:
                 st.error(f"❌ Invalid YouTube URL: {video_url}")
-                continue
+                continue           
             
-            st.markdown(f"## 🎥 Video: [{video_url}](https://www.youtube.com/watch?v={video_id})")
+            video_title, channel_name = get_video_details(video_id)
+
+            st.markdown(f"### 🎥 {video_title}")
+            st.markdown(f"[{video_url}](https://www.youtube.com/watch?v={video_id})")
+            st.markdown(f"**📺 Channel Name:** {channel_name}")
 
             with st.spinner("Fetching transcript..."):
                 transcript, error = get_transcript(video_id)
@@ -152,9 +175,7 @@ if st.button("Analyze"):
                 st.markdown(f"### **⭐ Overall Ad Score: {analysis['overall_score']}/10**")
                 st.markdown(f"📌 {analysis['overall_summary']}")
 
-                # Ad Metrics Section
-                st.markdown(f"### **📊 Ad Quality Metrics:**")
-                
+                st.markdown("### **📊 Ad Quality Metrics:**")
                 metrics = [
                     ("Ad Naturalness", "ad_naturalness"),
                     ("Persuasiveness", "persuasiveness"),
@@ -162,13 +183,10 @@ if st.button("Analyze"):
                     ("Ad Length & Placement", "ad_length_placement"),
                     ("Engagement", "engagement"),
                 ]
-
-                for title, key in metrics:
-                    st.markdown(f"**🔹 {title}:** {analysis[key]['score']}/10")
+                for idx, (title, key) in enumerate(metrics, start=1):
+                    st.markdown(f"**{idx}. {title}: {analysis[key]['score']}/10**")
                     st.markdown(f"   - {analysis[key]['explanation']}")
 
-                st.markdown("---")  
-            else:
-                st.warning(f"No advertisement found in {video_url}.")
+                st.markdown("---")
     else:
         st.warning("Please enter at least one valid YouTube link.")
