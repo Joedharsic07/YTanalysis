@@ -153,8 +153,26 @@ if st.button("Analyze"):
             
             video_title, channel_name = get_video_details(video_id)
 
-            st.markdown(f"### 🎥 {video_title}")
-            st.markdown(f"[{video_url}](https://www.youtube.com/watch?v={video_id})")
+            st.markdown(f"### 🎥 Video Title: {video_title}")
+            st.markdown(f"""
+    <style>
+        .youtube-link a {{
+            font-size: 20px !important;
+            font-weight: bold !important;
+            color: #0073e6 !important;
+            text-decoration: none !important;
+            display: inline-block !important;
+            margin-top: 10px !important;
+        }}
+        .youtube-link a:hover {{
+            text-decoration: underline !important;
+        }}
+    </style>
+    <div class="youtube-link">
+        <a href="https://www.youtube.com/watch?v={video_id}" target="_blank">{video_url}</a>
+    </div>
+""", unsafe_allow_html=True)
+
             st.markdown(f"**📺 Channel Name:** {channel_name}")
 
             with st.spinner("Fetching transcript..."):
