@@ -33,10 +33,16 @@ def extract_video_id(url):
 def format_time(seconds):
     try:
         seconds = float(seconds)
-        minutes = int(seconds) // 60
-        sec = int(seconds) % 60
-        return f"{minutes:02}:{sec:02}"
-    except ValueError:
+        
+        hours = int(seconds) // 3600
+        minutes = (int(seconds) % 3600) // 60
+        secs = int(seconds) % 60
+        
+        if hours > 0:
+            return f"{hours:01}:{minutes:02}:{secs:02}"
+        else:
+            return f"{minutes:02}:{secs:02}"
+    except (ValueError, TypeError):
         return "N/A"
 
 def get_video_details(video_id):
@@ -75,20 +81,38 @@ def get_transcript(video_id):
     except Exception as e:
         return None, f"Error: {str(e)}"
 
-def analyze_ad_quality(transcript):
+def analyze_ad_quality(transcript, video_id):
     if not transcript:
         st.error("⚠️ No transcript available for analysis.")
         return None
+    if transcript:
+        last_entry = transcript[-1]
+        if 'start' in last_entry:
+            try:
+                last_timestamp = float(last_entry['start'])
+                video_length = last_timestamp + 5
+            except (ValueError, TypeError):
+                video_length = "unknown"
+        else:
+            video_length = "unknown"
+    else:
+        video_length = "unknown"
 
     transcript_formatted = "\n".join(
         f"[{format_time(entry['start'])}] {entry['text']}" for entry in transcript
     )
 
     prompt = f"""
-    You are an expert in analyzing YouTube ad integrations.
+    You are an expert in analyzing YouTube ad integrations in videos of all lengths.
 
+    **Video Info:**
+    - Video ID: {video_id}
+    - Estimated video length: {format_time(video_length) if video_length != "unknown" else "unknown"}
+    
     **Extract the Ad Segment and Evaluate its Quality**:
-    - Identify the **ad start & end timestamps** (MM:SS format).
+    - Carefully analyze the entire transcript to find where the creator is advertising a product or service.
+    - Identify the **exact ad start & end timestamps** (in the format shown in the transcript).
+    - Make sure your timestamps are accurate for this possibly hour-length video.
     - Detect the **product name** being advertised.
     - Provide a **single Overall Ad Score (1-10)** with a **one-line explanation**.
     - Evaluate the ad using **five key metrics** with **scores (1-10) + short explanations**:
@@ -106,8 +130,8 @@ def analyze_ad_quality(transcript):
     **Output (JSON Format)**:
     {{
       "product_name": "Detected Product",
-      "start_time": "MM:SS",
-      "end_time": "MM:SS",
+      "start_time": "HH:MM:SS or MM:SS format matching transcript",
+      "end_time": "HH:MM:SS or MM:SS format matching transcript",
       "overall_score": 0-10,
       "overall_summary": "One-line summary for overall score",
       "ad_naturalness": {{"score": 0-10, "explanation": "1-2 line reason"}},
@@ -122,12 +146,7 @@ def analyze_ad_quality(transcript):
         response = model.generate_content(prompt, generation_config={"temperature": 0})
         clean_text = response.text.strip().strip("```json").strip("```").strip()
         ad_data = json.loads(clean_text)
-
-        if "start_time" in ad_data and isinstance(ad_data["start_time"], (int, float)):
-            ad_data["start_time"] = format_time(ad_data["start_time"])
-        if "end_time" in ad_data and isinstance(ad_data["end_time"], (int, float)):
-            ad_data["end_time"] = format_time(ad_data["end_time"])
-
+        
         return ad_data
     except json.JSONDecodeError as e:
         st.error(f"⚠️ JSON Parsing Error: {e} - LLM Response: {response.text}")
@@ -183,7 +202,7 @@ if st.button("Analyze"):
                 continue
 
             with st.spinner("Analyzing ad quality..."):
-                analysis = analyze_ad_quality(transcript)
+                analysis = analyze_ad_quality(transcript, video_id)
 
             if analysis:
                 st.markdown(f"### **📢 Ad Details**")
